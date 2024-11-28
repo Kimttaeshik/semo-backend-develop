@@ -12,19 +12,20 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.List;
 
 
 @Component
 @Slf4j
 @Transactional
-public class FoodCrawling {
+public class LibraryCrawling {
     private final WebDriver webDriver;
 
     private WebElement element;
-    private String url = "https://portal.sejong.ac.kr/jsp/login/loginSSL.jsp";
+    private String url = "https://library.sejong.ac.kr/identity/Login.ax";
 
     //property 값
-    public FoodCrawling() throws InterruptedException, IOException {
+    public LibraryCrawling() throws InterruptedException, IOException {
         String os = System.getProperty("os.name").toLowerCase();
 
         // 안되면 절대경로로 하세요
@@ -126,7 +127,7 @@ public class FoodCrawling {
             WebDriverWait wait = new WebDriverWait(webDriver, Duration.ofSeconds(10));
 
             log.info("Step 2: Waiting for the ID field to be present.");
-            WebElement idField = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("id"))); // 아이디 입력 필드의 ID 속성
+            WebElement idField = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("userID"))); // 아이디 입력 필드의 ID 속성
 
             log.info("Step 3: Waiting for the password field to be present.");
             WebElement passwordField = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("password"))); // 비밀번호 입력 필드의 ID 속성
@@ -136,39 +137,63 @@ public class FoodCrawling {
             idField.click();
             idField.sendKeys("19010668"); // 실제 사용자 아이디
             passwordField.click();
-            passwordField.sendKeys("rlaxotlr3220"); // 실제 사용자 비밀번호
+            passwordField.sendKeys("001107"); // 실제 사용자 비밀번호
 
             log.info("Step 5: Waiting for login button to be present.");
-            WebElement loginButton = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("loginBtn")));
+            WebElement loginButton = wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("a[href='javascript:identify.goLogin();']")));
 
             log.info("Step 6: Clicking login button.");
             loginButton.click();
 
             log.info("Step 7: Waiting for successful login (waiting for URL change).");
-            wait.until(ExpectedConditions.urlContains("https://portal.sejong.ac.kr/user/index.do")); // 로그인 후 페이지 URL이 포함되기를 기다림
+            wait.until(ExpectedConditions.urlContains("https://library.sejong.ac.kr/index.ax")); // 로그인 후 페이지 URL이 포함되기를 기다림
 
-            log.info("Step 8: Checking for any alert.");
-            try {
-                WebDriverWait alertWait = new WebDriverWait(webDriver, Duration.ofSeconds(5));
-                alertWait.until(ExpectedConditions.alertIsPresent());
-                log.info("Step 9: Alert found, handling alert.");
-                Alert alert = webDriver.switchTo().alert();
-                alert.dismiss(); // 알림을 닫기
-            } catch (NoAlertPresentException e) {
-                log.info("Step 9: No alert present.");
+            // 로그인 후 스터디룸 예약 페이지로 이동
+            log.info("Step 8: Navigating to the Study Room page.");
+            WebElement studyRoomLink = wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("span.imglink a[href='studyroom/Main.ax']")));
+            studyRoomLink.click();
+
+            // 스터디룸 예약 페이지로 이동한 후 URL 확인
+            log.info("Step 9: Waiting for the new page to load.");
+            wait.until(ExpectedConditions.urlContains("studyroom/Main.ax")); // URL이 변경되기를 기다림
+
+            // 예약 현황 버튼 클릭
+            log.info("Step 10: Clicking the '예약 현황' button.");
+            WebElement reservationStatusLink = wait.until(ExpectedConditions.presenceOfElementLocated(
+                    By.xpath("//span[@class='gBtn1']//a[contains(text(), '예약 현황')]")
+            ));
+            reservationStatusLink.click();
+
+            // 예약 현황 데이터 추출 (테이블 내의 정보 추출)
+            log.info("Step 11: Extracting reservation details.");
+            WebElement reservationTable = wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("table.tb05"))); // 예약 테이블 요소
+
+// 모든 행을 가져오기
+            List<WebElement> rows = reservationTable.findElements(By.tagName("tr"));
+
+            for (WebElement row : rows) {
+                // 각 셀을 가져오기
+                List<WebElement> cells = row.findElements(By.tagName("td"));
+
+                // 예약 시간이 있는 셀을 찾기 (예시: 2번째 셀에 예약 시간)
+                if (cells.size() > 1) {
+                    String reservationTime = cells.get(1).getText(); // 두 번째 셀에서 예약 시간 추출
+                    String reservationPerson = "";
+
+                    // 예약자가 있는 셀을 찾기 (예시: 마지막 셀에 예약자 정보)
+                    if (cells.size() > 5) {
+                        WebElement reservationLink = cells.get(5).findElement(By.tagName("a"));
+                        reservationPerson = reservationLink.getText(); // 예약자 이름 추출
+                    }
+
+                    // 예약 시간이 비어 있지 않으면 출력
+                    if (!reservationTime.trim().isEmpty() && !reservationPerson.trim().isEmpty()) {
+                        log.info("At " + reservationTime + ", the following person is reserved: " + reservationPerson);
+                    }
+                }
             }
 
-            log.info("Step 10: Waiting for the menu element to be present.");
-            WebElement menuElement = wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("div[style*='border-bottom:1px solid']"))); // 예시: CSS Selector 사용
 
-            log.info("Step 11: Extracting menu text.");
-            String menuText = menuElement.getText();
-
-            log.info("Step 12: Splitting menu text to get the main menu.");
-            String[] items = menuText.split("·");  // '·' 기호로 분리
-            String mainMenu = items[0].trim(); // 첫 번째 항목이 주요 메뉴
-
-            log.info("Step 13: Main menu extracted: " + mainMenu);
 
         } catch (Exception e) {
             log.error("Error: ", e);
@@ -184,7 +209,7 @@ public class FoodCrawling {
 
 
     public static void main(String[] args) throws IOException, InterruptedException {
-        FoodCrawling bot = new FoodCrawling();
+        LibraryCrawling bot = new LibraryCrawling();
         bot.activateBot();
     }
 }
